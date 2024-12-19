@@ -7,7 +7,7 @@ const port = 3306;
 
 // Configuration de la base de données
 const connection = mysql.createConnection({
-  host: 'VOTRE_IP_PUBLIQUE',
+  host: '2a09:bac2:57a1:c8::14:2d1',
   port: 3306,
   user: 'votre_user',
   password: 'votre_mot_de_passe',
