@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rental Dashboard</title>
+    <link href="style.css" rel="stylesheet">
+ 
+</head>
+<body>
+    <header>
+        <h1>Rental Dashboard</h1>
+    </header>
+
+    <div class="container">
+        <button id="showFormButton">Add Property</button>
+
+        <form id="addForm">
+            <input type="text" id="propertyName" placeholder="Property Name" required>
+            <input type="number" id="monthlyRent" placeholder="Monthly Rent" required>
+            <button type="button" id="addProperty">Add Property</button>
+            <button type="button" id="closeFormButton">Close</button>
+        </form>
+
+        <div id="properties"></div>
+
+        <div id="revenueChartContainer">
+            <canvas id="revenueChart" width="400" height="200"></canvas>
+        </div>
+
+        <div id="paymentsModal" style="display: none;">
+            <div class="modal-content">
+                <span id="closeModal">&times;</span>
+                <h2>Payments</h2>
+                <table id="paymentsTable">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Amount</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <script>
+        const propertiesContainer = document.getElementById('properties');
+        const addPropertyButton = document.getElementById('addProperty');
+        const showFormButton = document.getElementById('showFormButton');
+        const closeFormButton = document.getElementById('closeFormButton');
+        const addForm = document.getElementById('addForm');
+
+        let revenueData = [];
+        let chart;
+
+        fetch('/api/properties')
+            .then(response => response.json())
+            .then(data => {
+                data.forEach(displayProperty);
+                updateRevenueChart(data); // Initialiser le graphique
+            });
+
+
+        // Show the form when "Add Property" button is clicked
+        showFormButton.addEventListener('click', () => {
+            addForm.style.display = 'block';
+        });
+
+        // Close the form when "Close" button is clicked
+        closeFormButton.addEventListener('click', () => {
+            addForm.style.display = 'none';
+        });
+
+        addPropertyButton.addEventListener('click', () => {
+            const propertyName = document.getElementById('propertyName').value;
+            const monthlyRent = document.getElementById('monthlyRent').value;
+
+            if (propertyName.trim() === '' || monthlyRent.trim() === '') {
+                alert('Please fill out both fields.');
+                return;
+            }
+            const property = { name: propertyName, rent: monthlyRent };
+
+            fetch('/api/properties', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(property),
+            })
+                .then(response => response.json())
+                .then(savedProperty => {
+                    displayProperty(savedProperty);
+                    updateRevenueChart([...revenueData, savedProperty]);
+                    document.getElementById('propertyName').value = '';
+                    document.getElementById('monthlyRent').value = '';
+                    addForm.style.display = 'none';
+                });
+            });
+
+            function displayProperty(property) {
+                const propertyDiv = document.createElement('div');
+                propertyDiv.className = 'property';
+
+                const propertyDetails = document.createElement('span');
+                propertyDetails.textContent = `${property.name} - Rent: $${property.rent}`;
+
+                const statusButton = document.createElement('button');
+                statusButton.className = property.rented ? 'status-button status-rented' : 'status-button status-available';
+                statusButton.title = property.rented ? 'Rented' : 'Available';
+
+                statusButton.addEventListener('click', () => {
+                    property.rented = !property.rented;
+                    statusButton.className = property.rented ? 'status-button status-rented' : 'status-button status-available';
+                    statusButton.title = property.rented ? 'Rented' : 'Available';
+                    updateProperty(property);
+                });
+
+                const paidButton = document.createElement('button');
+                paidButton.className = property.paid ? 'paid-button paid' : 'paid-button';
+                paidButton.textContent = property.paid ? 'Paid' : 'Mark as Paid';
+
+                paidButton.addEventListener('click', () => {
+                    property.paid = !property.paid;
+                    paidButton.className = property.paid ? 'paid-button paid' : 'paid-button';
+                    paidButton.textContent = property.paid ? 'Paid' : 'Mark as Paid';
+                    updateProperty(property);
+
+                    if (property.paid) {
+                        // Ajouter un paiement dans la base de données
+                        fetch('/api/payments', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                property_id: property.id,
+                                payment_date: new Date().toISOString().split('T')[0], // Date actuelle au format YYYY-MM-DD
+                                amount: property.rent
+                            }),
+                        })
+                        .then(response => response.json())
+                        .then(payment => console.log('Payment recorded:', payment))
+                        .catch(err => console.error('Error recording payment:', err));
+                    }
+                });
+
+
+    const deleteButton = document.createElement('button');
+    deleteButton.textContent = 'Delete';
+    deleteButton.addEventListener('click', () => {
+        fetch(`/api/properties/${property.id}`, { method: 'DELETE' })
+            .then(() => {
+                propertiesContainer.removeChild(propertyDiv);
+                revenueData = revenueData.filter(p => p.id !== property.id);
+                updateRevenueChart(revenueData);
+            })
+            .catch(err => console.error('Error deleting property:', err));
+    });
+
+    const viewPaymentsButton = document.createElement('button');
+    viewPaymentsButton.textContent = 'View Payments';
+    viewPaymentsButton.addEventListener('click', () => {
+        loadPayments(property.id);
+    });
+
+    propertyDiv.appendChild(viewPaymentsButton);
+
+
+    propertyDiv.appendChild(propertyDetails);
+    propertyDiv.appendChild(statusButton);
+    propertyDiv.appendChild(paidButton);
+    propertyDiv.appendChild(deleteButton);
+
+    propertiesContainer.appendChild(propertyDiv);
+}
+
+
+        function updateProperty(property) {
+            fetch(`/api/properties/${property.id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(property),
+                    }).then(response => {
+                        if (!response.ok) {
+                            console.error('Failed to update property');
+                        }
+                    }).catch(err => console.error(err));
+        }
+
+
+        let revenueTimeline = []; // Stocke les revenus cumulés par mois
+        let timelineLabels = [];  // Stocke les labels pour le graphique
+
+        function updateRevenueChart(properties) {
+            // Calculez les revenus cumulés pour toutes les propriétés marquées comme payées
+            revenueData = properties.filter(p => p.paid).map(p => parseFloat(p.rent));
+
+            const totalRevenue = revenueData.reduce((sum, rent) => sum + rent, 0);
+            const labels = properties.map(p => p.name);
+            const data = properties.map(p => (p.paid ? parseFloat(p.rent) : 0));
+
+            if (!chart) {
+                const ctx = document.getElementById('revenueChart').getContext('2d');
+                chart = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: 'Revenue ($)',
+                            data: data,
+                            backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                            borderColor: 'rgba(75, 192, 192, 1)',
+                            borderWidth: 1,
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                title: {
+                                    display: true,
+                                    text: 'Revenue ($)'
+                                }
+                            },
+                            x: {
+                                title: {
+                                    display: true,
+                                    text: 'Biens'
+                                }
+                            }
+                        }
+                    }
+                });
+            } else {
+                chart.data.labels = labels;
+                chart.data.datasets[0].data = data;
+                chart.update();
+            }
+        }
+        function loadPayments(propertyId) {
+            fetch(`/api/properties/${propertyId}/payments`)
+                .then(response => response.json())
+                .then(payments => {
+                    const paymentsTable = document.getElementById('paymentsTable').querySelector('tbody');
+                    paymentsTable.innerHTML = ''; // Clear existing rows
+
+                    payments.forEach(payment => {
+                        const row = paymentsTable.insertRow();
+                        row.insertCell(0).textContent = payment.payment_date;
+                        row.insertCell(1).textContent = `$${payment.amount}`;
+                    });
+
+                    document.getElementById('paymentsModal').style.display = 'block';
+                })
+                .catch(err => console.error('Error fetching payments:', err));
+        }
+
+
+
+
+
+
+    </script>
+</body>
+</html>
