@@ -3,14 +3,15 @@ const mysql = require('mysql2');
 const bodyParser = require('body-parser');
 
 const app = express();
-const port = 3000;
+const port = 3306;
 
 // Configuration de la base de données
-const db = mysql.createConnection({
-    host: 'localhost',
-    user: 'rental_user',
-    password: 'password123',
-    database: 'rental_bdd'
+const connection = mysql.createConnection({
+  host: 'VOTRE_IP_PUBLIQUE',
+  port: 3306,
+  user: 'votre_user',
+  password: 'votre_mot_de_passe',
+  database: 'votre_base_de_donnees'
 });
 
 // Connectez-vous à la base de données
